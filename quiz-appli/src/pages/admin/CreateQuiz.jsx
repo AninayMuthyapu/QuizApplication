@@ -12,6 +12,9 @@ export default function CreateQuiz() {
         duration: 30,
         numberOfQuestions: 0,
         difficulty: 'medium',
+        department: '',
+        semester: '',
+        quizDate: '',
         quizMode: 'immediate',
         scheduledStart: '',
         scheduledEnd: '',
@@ -88,7 +91,7 @@ export default function CreateQuiz() {
                                     <div className="col-md-3">
                                         <label className="form-label">Subject *</label>
                                         <input type="text" className="form-control" name="subject" value={form.subject}
-                                            onChange={handleChange} required placeholder="e.g. CS" />
+                                            onChange={handleChange} required placeholder="e.g. DSA" />
                                     </div>
                                     <div className="col-md-3">
                                         <label className="form-label">Duration (min)</label>
@@ -107,6 +110,34 @@ export default function CreateQuiz() {
                                             <option value="medium">Medium</option>
                                             <option value="hard">Hard</option>
                                         </select>
+                                    </div>
+                                </div>
+
+                                {/* Class Assignment & Date */}
+                                <div className="row g-3 mb-3">
+                                    <div className="col-md-4">
+                                        <label className="form-label">Target Department</label>
+                                        <select className="form-select" name="department" value={form.department} onChange={handleChange}>
+                                            <option value="">All Departments</option>
+                                            <option value="Computer Science">Computer Science</option>
+                                            <option value="Information Technology">Information Technology</option>
+                                            <option value="Electronics">Electronics</option>
+                                            <option value="Mechanical">Mechanical</option>
+                                            <option value="Civil">Civil</option>
+                                        </select>
+                                    </div>
+                                    <div className="col-md-4">
+                                        <label className="form-label">Target Semester</label>
+                                        <select className="form-select" name="semester" value={form.semester} onChange={handleChange}>
+                                            <option value="">All Semesters</option>
+                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                                                <option key={s} value={s}>{s}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="col-md-4">
+                                        <label className="form-label">Quiz Date</label>
+                                        <input type="date" className="form-control" name="quizDate" value={form.quizDate} onChange={handleChange} />
                                     </div>
                                 </div>
 

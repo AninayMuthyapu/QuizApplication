@@ -90,6 +90,11 @@ const quizService = {
         return response.data;
     },
 
+    getOverviewAnalytics: async (filters = {}) => {
+        const response = await API.get('/analytics/overview', { params: filters });
+        return response.data;
+    },
+
     getQuestionAnalytics: async (quizId) => {
         const response = await API.get(`/analytics/question/${quizId}`);
         return response.data;

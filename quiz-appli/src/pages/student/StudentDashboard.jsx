@@ -1,62 +1,66 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useQuiz } from '../../context/QuizContext';
+import quizService from '../../services/quizService';
 import QuizCard from '../../components/QuizCard';
 import RadarChart from '../../components/RadarChart';
 import LineChart from '../../components/LineChart';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
-/* ── Mock data (replace with real API data) ─────────────── */
-const MOCK_UPCOMING = [
-    { _id: 'q1', title: 'Data Structures — Mid Sem', subject: 'DSA', date: '2026-03-10', duration: 45, difficulty: 'medium', totalQuestions: 30, description: 'Covers arrays, linked lists, trees, and graphs.' },
-    { _id: 'q2', title: 'Operating Systems Quiz 3', subject: 'OS', date: '2026-03-12', duration: 30, difficulty: 'hard', totalQuestions: 20, description: 'Process scheduling, memory management, deadlocks.' },
-    { _id: 'q3', title: 'DBMS—Normalization', subject: 'DBMS', date: '2026-03-15', duration: 25, difficulty: 'easy', totalQuestions: 15, description: '1NF through BCNF, functional dependencies.' },
-];
-
-const MOCK_RESULTS = [
-    { quiz: 'Data Structures Quiz 2', score: 82, total: 100, passed: true, time: '18 min' },
-    { quiz: 'Computer Networks Test', score: 45, total: 100, passed: false, time: '25 min' },
-    { quiz: 'OOP Concepts', score: 91, total: 100, passed: true, time: '12 min' },
-    { quiz: 'DBMS Joins & Queries', score: 67, total: 100, passed: true, time: '22 min' },
-    { quiz: 'Operating Systems Quiz 2', score: 38, total: 100, passed: false, time: '28 min' },
-];
-
-const RADAR_DATA = {
-    labels: ['DSA', 'DBMS', 'OS', 'Networks', 'OOP', 'Math'],
-    scores: [78, 65, 52, 45, 91, 70],
-};
-
-const LINE_DATA = {
-    labels: ['Quiz 1', 'Quiz 2', 'Quiz 3', 'Quiz 4', 'Quiz 5', 'Quiz 6', 'Quiz 7'],
-    scores: [55, 62, 58, 71, 75, 82, 78],
-};
-
 export default function StudentDashboard() {
     const { user } = useAuth();
-    const { quizzes, loadQuizzes, loading } = useQuiz();
+    const [loading, setLoading] = useState(true);
+    const [availableQuizzes, setAvailableQuizzes] = useState([]);
+    const [history, setHistory] = useState([]);
+    const [analytics, setAnalytics] = useState(null);
 
     useEffect(() => {
-        loadQuizzes();
-    }, [loadQuizzes]);
+        const loadData = async () => {
+            setLoading(true);
+            try {
+                const [quizzes, historyData, stats] = await Promise.all([
+                    quizService.fetchQuizzes(),
+                    quizService.getHistory(),
+                    quizService.getStudentAnalytics(user._id)
+                ]);
+                setAvailableQuizzes(quizzes);
+                setHistory(historyData);
+                setAnalytics(stats);
+            } catch (err) {
+                console.error('Failed to load dashboard data:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (user?._id) {
+            loadData();
+        }
+    }, [user?._id]);
+
+    // Categorize Quizzes
+    const categorized = useMemo(() => {
+        const completedIds = new Set(history.map(h => h.quiz?._id));
+        const now = new Date();
+
+        return {
+            active: availableQuizzes.filter(q => !completedIds.has(q._id)),
+            completed: history.slice(0, 5), // Show last 5 completed
+            upcoming: availableQuizzes.filter(q => q.quizMode === 'scheduled' && new Date(q.scheduledStart) > now)
+        };
+    }, [availableQuizzes, history]);
 
     if (loading) return <LoadingSpinner />;
-
-    // Use real quizzes if available, else fallback to mock
-    const upcomingQuizzes = quizzes.length > 0 ? quizzes.slice(0, 3) : MOCK_UPCOMING;
 
     return (
         <div className="container-fluid py-4 px-3 px-lg-4">
 
-            {/* ═══════════════════════════════════════════════════
-          1. WELCOME CARD
-         ═══════════════════════════════════════════════════ */}
+            {/* 1. WELCOME CARD */}
             <div className="row mb-4">
                 <div className="col-12">
                     <div className="card border-0 shadow-sm overflow-hidden">
                         <div className="card-body p-0">
                             <div className="row g-0">
-                                {/* Left - gradient welcome */}
                                 <div className="col-lg-8">
                                     <div className="p-4 p-lg-5"
                                         style={{
@@ -71,17 +75,18 @@ export default function StudentDashboard() {
                                             </div>
                                             <div>
                                                 <h2 className="fw-bold mb-1">Welcome back, {user?.name || 'Student'}! 👋</h2>
-                                                <p className="mb-0 opacity-75">Keep going — consistency is the key to mastery.</p>
+                                                <p className="mb-0 opacity-75">
+                                                    {user?.department} | Semester {user?.semester}
+                                                </p>
                                             </div>
                                         </div>
 
-                                        {/* Stats row inside welcome */}
                                         <div className="row g-3 mt-4">
                                             {[
-                                                { icon: 'bi-person-badge', label: 'Enrollment ID', value: user?._id?.slice(-6).toUpperCase() || 'STU-002' },
-                                                { icon: 'bi-trophy', label: 'Average Score', value: '76%' },
-                                                { icon: 'bi-journal-check', label: 'Quizzes Taken', value: '14' },
-                                                { icon: 'bi-star-fill', label: 'Best Score', value: '95%' },
+                                                { icon: 'bi-person-badge', label: 'Enrollment ID', value: user?.enrollmentId || 'N/A' },
+                                                { icon: 'bi-trophy', label: 'Average Score', value: `${analytics?.averageScore || 0}%` },
+                                                { icon: 'bi-journal-check', label: 'Quizzes Taken', value: analytics?.totalQuizzes || 0 },
+                                                { icon: 'bi-star-fill', label: 'Best Score', value: history.length ? `${Math.max(...history.map(h => h.percentage))}%` : '0%' },
                                             ].map((stat, i) => (
                                                 <div className="col-6 col-md-3" key={i}>
                                                     <div className="bg-white bg-opacity-10 rounded-3 p-3 text-center">
@@ -95,7 +100,6 @@ export default function StudentDashboard() {
                                     </div>
                                 </div>
 
-                                {/* Right - quick actions */}
                                 <div className="col-lg-4 d-flex">
                                     <div className="p-4 d-flex flex-column justify-content-center gap-3 w-100 bg-white">
                                         <h6 className="fw-semibold text-muted mb-0">
@@ -118,33 +122,35 @@ export default function StudentDashboard() {
                 </div>
             </div>
 
-            {/* ═══════════════════════════════════════════════════
-          2. UPCOMING QUIZZES
-         ═══════════════════════════════════════════════════ */}
+            {/* 2. ACTIVE / AVAILABLE QUIZZES */}
             <div className="d-flex justify-content-between align-items-center mb-3">
                 <h5 className="fw-bold mb-0">
-                    <i className="bi bi-calendar-event me-2 text-primary"></i>Upcoming Quizzes
+                    <i className="bi bi-play-circle me-2 text-primary"></i>Available Quizzes
                 </h5>
                 <Link to="/student/quizzes" className="btn btn-sm btn-outline-primary">View All</Link>
             </div>
 
             <div className="row g-3 mb-4">
-                {upcomingQuizzes.map((quiz) => (
-                    <div className="col-md-6 col-xl-4" key={quiz._id}>
-                        <QuizCard quiz={quiz} />
+                {categorized.active.length > 0 ? (
+                    categorized.active.map((quiz) => (
+                        <div className="col-md-6 col-xl-4" key={quiz._id}>
+                            <QuizCard quiz={quiz} />
+                        </div>
+                    ))
+                ) : (
+                    <div className="col-12 py-4 text-center bg-light rounded-3">
+                        <p className="text-muted mb-0">No new quizzes available for your class.</p>
                     </div>
-                ))}
+                )}
             </div>
 
-            {/* ═══════════════════════════════════════════════════
-          3. RECENT RESULTS
-         ═══════════════════════════════════════════════════ */}
+            {/* 3. RECENT COMPLETED */}
             <div className="row mb-4">
                 <div className="col-12">
                     <div className="card border-0 shadow-sm">
                         <div className="card-header bg-transparent d-flex justify-content-between align-items-center pt-3">
                             <h5 className="fw-bold mb-0">
-                                <i className="bi bi-clipboard-data me-2 text-primary"></i>Recent Results
+                                <i className="bi bi-clipboard-check me-2 text-success"></i>Recent Completed
                             </h5>
                             <Link to="/student/history" className="btn btn-sm btn-outline-primary">Full History</Link>
                         </div>
@@ -156,35 +162,44 @@ export default function StudentDashboard() {
                                             <th className="ps-4">Quiz Name</th>
                                             <th>Score</th>
                                             <th>Result</th>
-                                            <th>Time Taken</th>
+                                            <th>Date</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {MOCK_RESULTS.map((r, i) => (
-                                            <tr key={i}>
-                                                <td className="ps-4 fw-semibold">{r.quiz}</td>
-                                                <td>
-                                                    <div className="d-flex align-items-center gap-2">
-                                                        <div className="progress flex-grow-1" style={{ height: 7, width: 80 }}>
-                                                            <div
-                                                                className={`progress-bar bg-${r.score >= 50 ? 'success' : 'danger'}`}
-                                                                style={{ width: `${r.score}%` }}
-                                                            ></div>
+                                        {categorized.completed.length > 0 ? (
+                                            categorized.completed.map((r, i) => (
+                                                <tr key={i}>
+                                                    <td className="ps-4">
+                                                        <div className="fw-semibold">{r.quiz?.title}</div>
+                                                        <small className="text-muted">{r.quiz?.subject}</small>
+                                                    </td>
+                                                    <td>
+                                                        <div className="d-flex align-items-center gap-2">
+                                                            <div className="progress flex-grow-1" style={{ height: 7, width: 80 }}>
+                                                                <div
+                                                                    className={`progress-bar bg-${r.percentage >= 40 ? 'success' : 'danger'}`}
+                                                                    style={{ width: `${r.percentage}%` }}
+                                                                ></div>
+                                                            </div>
+                                                            <span className="small fw-semibold">{r.percentage}%</span>
                                                         </div>
-                                                        <span className="small fw-semibold">{r.score}%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span className={`badge bg-${r.passed ? 'success' : 'danger'} bg-opacity-10 text-${r.passed ? 'success' : 'danger'} px-3 py-1`}>
-                                                        <i className={`bi ${r.passed ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} me-1`}></i>
-                                                        {r.passed ? 'Passed' : 'Failed'}
-                                                    </span>
-                                                </td>
-                                                <td className="text-muted">
-                                                    <i className="bi bi-clock me-1"></i>{r.time}
-                                                </td>
+                                                    </td>
+                                                    <td>
+                                                        <span className={`badge bg-${r.passed ? 'success' : 'danger'} bg-opacity-10 text-${r.passed ? 'success' : 'danger'} px-3 py-1`}>
+                                                            <i className={`bi ${r.passed ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} me-1`}></i>
+                                                            {r.passed ? 'Passed' : 'Failed'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-muted small">
+                                                        {new Date(r.submittedAt).toLocaleDateString()}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="4" className="text-center py-4 text-muted">No completed quizzes yet.</td>
                                             </tr>
-                                        ))}
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -193,79 +208,80 @@ export default function StudentDashboard() {
                 </div>
             </div>
 
-            {/* ═══════════════════════════════════════════════════
-          4. PERFORMANCE CHARTS
-         ═══════════════════════════════════════════════════ */}
-            <div className="row g-4 mb-4">
-                <div className="col-lg-6">
-                    <div className="card border-0 shadow-sm h-100">
-                        <div className="card-body">
-                            <RadarChart
-                                labels={RADAR_DATA.labels}
-                                scores={RADAR_DATA.scores}
-                                title="Subject-wise Scores"
-                            />
+            {/* 4. PERFORMANCE CHARTS */}
+            {analytics && (
+                <div className="row g-4 mb-4">
+                    <div className="col-lg-6">
+                        <div className="card border-0 shadow-sm h-100">
+                            <div className="card-body">
+                                {(() => {
+                                    const subjectData = analytics.weakConcepts.reduce((acc, curr) => ({ ...acc, [curr.subject]: curr.averageScore }), {});
+                                    return (
+                                        <RadarChart
+                                            labels={Object.keys(subjectData)}
+                                            scores={Object.values(subjectData)}
+                                            title="Subject Performance"
+                                        />
+                                    );
+                                })()}
+                                {analytics.weakConcepts.length === 0 && <p className="text-center text-muted small mt-2">Finish more quizzes to see analysis.</p>}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col-lg-6">
+                        <div className="card border-0 shadow-sm h-100">
+                            <div className="card-body">
+                                <LineChart
+                                    labels={analytics.improvementTrend.map(t => `Quiz ${t.index}`)}
+                                    scores={analytics.improvementTrend.map(t => t.actual)}
+                                    title="Score Improvement Trend"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div className="col-lg-6">
-                    <div className="card border-0 shadow-sm h-100">
-                        <div className="card-body">
-                            <LineChart
-                                labels={LINE_DATA.labels}
-                                scores={LINE_DATA.scores}
-                                title="Score Improvement Trend"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
+            )}
 
-            {/* ═══════════════════════════════════════════════════
-          5. AI INSIGHT CARD
-         ═══════════════════════════════════════════════════ */}
-            <div className="row mb-2">
-                <div className="col-12">
-                    <div className="card border-0 shadow-sm"
-                        style={{
-                            background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
-                            borderLeft: '4px solid #6610f2',
-                        }}>
-                        <div className="card-body p-4">
-                            <div className="d-flex align-items-start gap-3">
-                                <div className="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                                    style={{ width: 50, height: 50 }}>
-                                    <i className="bi bi-stars fs-4 text-primary"></i>
-                                </div>
-                                <div>
-                                    <h6 className="fw-bold mb-1">
-                                        <i className="bi bi-robot me-1 text-primary"></i>AI Study Insight
-                                    </h6>
-                                    <p className="mb-2">
-                                        Based on your recent performance, your <strong>Computer Networks</strong> and <strong>Operating Systems</strong> scores
-                                        are below average. We recommend focusing 30 minutes daily on these subjects.
-                                    </p>
-                                    <div className="d-flex flex-wrap gap-2 mb-2">
-                                        <span className="badge bg-danger bg-opacity-10 text-danger">
-                                            <i className="bi bi-arrow-down-circle me-1"></i>Networks — 45%
-                                        </span>
-                                        <span className="badge bg-warning bg-opacity-10 text-warning">
-                                            <i className="bi bi-arrow-down-circle me-1"></i>OS — 52%
-                                        </span>
-                                        <span className="badge bg-success bg-opacity-10 text-success">
-                                            <i className="bi bi-arrow-up-circle me-1"></i>OOP — 91% (Strong)
-                                        </span>
+            {/* 5. AI INSIGHT CARD */}
+            {analytics?.weakConcepts?.length > 0 && (
+                <div className="row mb-2">
+                    <div className="col-12">
+                        <div className="card border-0 shadow-sm"
+                            style={{
+                                background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                                borderLeft: '4px solid #6610f2',
+                            }}>
+                            <div className="card-body p-4">
+                                <div className="d-flex align-items-start gap-3">
+                                    <div className="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                                        style={{ width: 50, height: 50 }}>
+                                        <i className="bi bi-stars fs-4 text-primary"></i>
                                     </div>
-                                    <small className="text-muted">
-                                        <i className="bi bi-lightbulb me-1"></i>
-                                        <strong>Tip:</strong> Try practice quizzes on weak topics to build confidence before your upcoming mid-sem on March 10.
-                                    </small>
+                                    <div>
+                                        <h6 className="fw-bold mb-1">
+                                            <i className="bi bi-robot me-1 text-primary"></i>AI Study Insight
+                                        </h6>
+                                        <p className="mb-2">
+                                            You are doing great in some areas, but consider focusing on these subjects where your average is below 60%.
+                                        </p>
+                                        <div className="d-flex flex-wrap gap-2 mb-2">
+                                            {analytics.weakConcepts.map((wc, i) => (
+                                                <span key={i} className="badge bg-danger bg-opacity-10 text-danger">
+                                                    <i className="bi bi-arrow-down-circle me-1"></i>{wc.subject} — {wc.averageScore}%
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <small className="text-muted">
+                                            <i className="bi bi-lightbulb me-1"></i>
+                                            <strong>Tip:</strong> Review the incorrectly answered questions in your recent attempts to understand the concepts better.
+                                        </small>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
         </div>
     );
