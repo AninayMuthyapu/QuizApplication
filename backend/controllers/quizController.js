@@ -119,11 +119,23 @@ exports.getStudentQuizzes = async (req, res, next) => {
                         },
                     },
                 },
+                // Top-level department/semester match
+                {
+                    department: student.department,
+                    semester: student.semester,
+                },
                 // Open quiz — no specific assignment
                 {
                     assignedTo: { $size: 0 },
                     assignedGroups: { $size: 0 },
+                    department: { $exists: false },
+                    semester: { $exists: false },
                 },
+                // Explicitly null or empty department/semester
+                {
+                    department: { $in: [null, ''] },
+                    semester: null
+                }
             ],
         };
 

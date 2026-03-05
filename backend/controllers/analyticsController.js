@@ -156,3 +156,100 @@ exports.getStudentAnalytics = async (req, res, next) => {
         next(error);
     }
 };
+
+// ── GET /api/analytics/overview ─────────────────────────────
+exports.getOverviewAnalytics = async (req, res, next) => {
+    try {
+        const { department, semester } = req.query;
+        let studentFilter = {};
+        if (department) studentFilter.department = department;
+        if (semester) studentFilter.semester = Number(semester);
+
+        // Find relevant students first
+        const students = await User.find(studentFilter).select('_id');
+        const studentIds = students.map((s) => s._id);
+
+        const matchQuery = {
+            student: { $in: studentIds },
+            status: { $in: ['submitted', 'graded'] },
+        };
+
+        const [submissions, totalQuizzes, totalStudents] = await Promise.all([
+            Submission.find(matchQuery).populate('quiz', 'subject'),
+            require('../models/Quiz').countDocuments(),
+            User.countDocuments({ role: 'student' }),
+        ]);
+
+        const totalAttempts = submissions.length;
+        const avgScore = totalAttempts
+            ? Math.round(submissions.reduce((sum, s) => sum + (s.percentage || 0), 0) / totalAttempts)
+            : 0;
+
+        // Subject-wise stats
+        const subjectScores = {};
+        const quizMap = {}; // quizId -> { title, subject, scores: [] }
+
+        submissions.forEach((s) => {
+            const subj = s.quiz?.subject || 'General';
+            if (!subjectScores[subj]) subjectScores[subj] = [];
+            subjectScores[subj].push(s.percentage);
+
+            if (s.quiz) {
+                const qId = s.quiz._id.toString();
+                if (!quizMap[qId]) {
+                    quizMap[qId] = {
+                        title: s.quiz.title,
+                        subject: s.quiz.subject,
+                        scores: [],
+                    };
+                }
+                quizMap[qId].scores.push(s.percentage);
+            }
+        });
+
+        const quizScores = {
+            labels: Object.keys(subjectScores),
+            scores: Object.keys(subjectScores).map((s) => {
+                const scores = subjectScores[s];
+                return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+            }),
+        };
+
+        const quizDetails = Object.values(quizMap).map((q) => ({
+            title: q.title,
+            subject: q.subject,
+            avgScore: Math.round(q.scores.reduce((a, b) => a + b, 0) / q.scores.length),
+            totalAttempts: q.scores.length,
+        }));
+
+        // Monthly/Weekly participation (last 7 days for now as trend)
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            last7Days.push(d.toISOString().split('T')[0]);
+        }
+
+        const dailyAttempts = last7Days.map((date) => {
+            const count = submissions.filter((s) => s.submittedAt?.toISOString().split('T')[0] === date).length;
+            return count;
+        });
+
+        res.json({
+            overview: {
+                totalQuizzes,
+                totalStudents,
+                totalAttempts,
+                avgScore,
+            },
+            quizScores,
+            quizDetails,
+            monthlyAttempts: {
+                labels: last7Days.map(d => d.split('-').slice(1).join('/')), // MM/DD
+                scores: dailyAttempts,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};

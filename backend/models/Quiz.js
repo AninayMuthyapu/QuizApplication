@@ -49,6 +49,18 @@ const quizSchema = new mongoose.Schema(
             enum: ['easy', 'medium', 'hard'],
             default: 'medium',
         },
+        department: {
+            type: String,
+            trim: true,
+        },
+        semester: {
+            type: Number,
+            min: 1,
+            max: 8,
+        },
+        quizDate: {
+            type: Date,
+        },
         shuffleQuestions: { type: Boolean, default: false },
         shuffleOptions: { type: Boolean, default: false },
         isPublished: { type: Boolean, default: false },
